@@ -13,8 +13,11 @@ import (
 
 	hellopb "github.com/yosuke7040/go-grpc/pkg/grpc"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 type myServer struct {
@@ -26,9 +29,17 @@ func NewMyServer() *myServer {
 }
 
 func (s *myServer) Hello(ctx context.Context, req *hellopb.HelloRequest) (*hellopb.HelloResponse, error) {
+	// return &hellopb.HelloResponse{
+	// 	Message: fmt.Sprintf("Hello, %s", req.Name),
+	// }, nil
+	stat := status.New(codes.Unknown, "unknown error occurred")
+	stat, _ = stat.WithDetails(&errdetails.DebugInfo{
+		Detail: "detail reason of err",
+	})
+	err := stat.Err()
 	return &hellopb.HelloResponse{
 		Message: fmt.Sprintf("Hello, %s", req.Name),
-	}, nil
+	}, err
 }
 
 func (s *myServer) HelloServerStream(req *hellopb.HelloRequest, stream hellopb.GreetingService_HelloServerStreamServer) error {
@@ -61,6 +72,24 @@ func (s *myServer) HelloClientStream(stream hellopb.GreetingService_HelloClientS
 	}
 }
 
+func (s *myServer) HelloBiStreams(stream hellopb.GreetingService_HelloBiStreamsServer) error {
+	for {
+		req, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		message := fmt.Sprintf("Hello, %v!", req.GetName())
+		if err := stream.Send(&hellopb.HelloResponse{
+			Message: message,
+		}); err != nil {
+			return err
+		}
+	}
+}
+
 func main() {
 	port := 8080
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -68,7 +97,13 @@ func main() {
 		panic(err)
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(
+		// grpc.StreamInterceptor(myStreamServerInterceptor1),
+		grpc.ChainStreamInterceptor(
+			myStreamServerInterceptor1,
+			myStreamServerInterceptor2,
+		),
+	)
 
 	hellopb.RegisterGreetingServiceServer(s, NewMyServer())
 
