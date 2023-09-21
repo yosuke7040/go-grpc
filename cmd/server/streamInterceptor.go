@@ -24,7 +24,7 @@ type myServerStreamWrapper1 struct {
 
 func (s *myServerStreamWrapper1) RecvMsg(m any) error {
 	err := s.ServerStream.RecvMsg(m)
-	if errors.Is(err, io.EOF) {
+	if !errors.Is(err, io.EOF) {
 		log.Println("[pre message] my stream server interceptor 1: ", m)
 	}
 	return err
